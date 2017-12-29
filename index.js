@@ -1,3 +1,4 @@
+'use strict';
 const koa = require('koa');
 const mongoose = require('mongoose');
 const convert = require('koa-convert');
@@ -7,7 +8,8 @@ const error = require('koa-json-error');
 const logger = require('koa-logger');
 const koaRes = require('koa-res');
 const handleError = require('koa-handle-error');
-//const task = require('./controller/task');
+const chalk = require('chalk');
+const cors = require('koa2-cors');
 const app = new koa();
 
 /*
@@ -15,9 +17,11 @@ const app = new koa();
 */
 mongoose.Promise = require('bluebird');
 mongoose
-.connect('mongodb://localhost/test')
+	.connect('mongodb://localhost/test', {
+		useMongoClient: true,
+	})
 .then((response) => {
-    console.log('mongo connection created');
+	//console.log('mongo connection created');
 })
 .catch((err) => {
     console.log("Error connecting to Mongo");
@@ -54,7 +58,13 @@ app.use(async (ctx, next) => {
     ctx.body = err.message
     ctx.app.emit('error', err, ctx)
   }
-})
+});
+
+app.use(cors({
+    origin: 'http://localhost:8000',
+    credentials: true,
+}));
+
 // logging
 app.use(logger())
 // body parsing
@@ -63,31 +73,29 @@ app.use(bodyParser())
 app.use(convert(koaRes()))
 // configure router
 app.use(router(_ => {
-    _.get('/saysomething', async (ctx) => {
-        ctx.body = 'hello world';
-    }),
-    _.get('/throwerror', async (ctx) => {
-        throw new Error('Aghh! An error!');
-    }),
     _.post('/incoming-http', async (ctx) => {
         ctx.body = 'post log received';
         saveLog(ctx);
         console.log(ctx.request.body);
     }),
-    _.get('/incoming-http', async (ctx) => {
-        ctx.body = 'get log received';
+    _.get('/logs', async (ctx) => {
+        ctx.body = [
+            {level: 'info', message: 'test 1'},
+            {level: 'info', message: 'test 2'},
+        ]
     })
-        //    _.get('/tasks', task.getTasks),
-        //    _.post('/task', task.createTask),
-        //    _.put('/task', task.updateTask),
-        //    _.delete('/task', task.deleteTask),
-        //    _.post('/task/multi', task.createConcurrentTasks),
-        //    _.delete('/task/multi', task.deleteConcurrentTasks)
 }));
 
 app.use(async ctx => {
-    console.log("MAIN");
     ctx.body = 'Server is running on port 3000';
 });
 
-app.listen(3000);
+app.listen(3000, () => {
+	console.log("Log Galaxy server started and listened to port 3000");
+	process.send({ok: true});
+})
+.on('error', (err) => {
+    console.log(chalk.red("UNABLE TO START LOG GALAXY: ", err));
+    process.send({ok: false, error: err});
+    process.exit();
+})
